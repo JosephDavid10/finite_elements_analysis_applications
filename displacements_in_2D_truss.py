@@ -1,4 +1,5 @@
-# Code to calculate
+# Code to calculate the stiffness matrix and displacements in a single 2D truss
+import numpy as np
 # Data
 E = 200e6 # Young's modulus
 A = 0.07071 # Section area
@@ -15,9 +16,3 @@ T = np.array([
 # Stiffness matrix for a 2D truss element
 K = np.transpose(T)@K1D@T
 print("K = ", K)
-# Boundary conditions
-F = [1,0,2,0] # units in KN
-
-# Calculating displacements
-displacements = np.linalg.inv(K)@F
-print(displacements)
