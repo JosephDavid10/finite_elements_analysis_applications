@@ -6,6 +6,8 @@ class truss_2d:
         self.nodes_list = nodes_list
         self.connectivity = connectivity
         self.dof = 2*len(nodes_list)      # Degrees of freedom
+
+    
     def stiffness_matrix(self):
         self.Kg = np.zeros((self.dof, self.dof))  # global stiffness matrix
         for truss in self.connectivity:
@@ -30,8 +32,10 @@ class truss_2d:
             for i in range(4):
                 for j in range(4):
                     self.Kg[matrix_index[i], matrix_index[j]] += K2D[i,j]
+                    
         return self.Kg
-        
+
+    
     def free_displacements(self, forces, displacements):
         reduced_index = []  # Selecting the rows and columns with known boundary conditions
         Kg = self.stiffness_matrix()
@@ -40,14 +44,42 @@ class truss_2d:
                reduced_index += [i]
         reduced_Kg = np.zeros((len(reduced_index),len(reduced_index)))
         reduced_forces = np.zeros(len(reduced_index))
+        
         for i in range(len(reduced_index)):
             reduced_forces[i] +=  forces[reduced_index[i]]
             for j in range(len(reduced_index)):
                 reduced_Kg[reduced_index[i], reduced_index[j]] += Kg[i,j]
         free_displacements = np.linalg.solve(reduced_Kg, reduced_forces)   # Calculating free displacements associated with the boundary conditions
+        
         for i in range(len(reduced_index)):
             displacements[reduced_index[i]] = free_displacements[i]
         support_forces = Kg @ displacements  # Calculating the reaction forces considering the displacements in each node
         self.reactions = np.array([round(x,10) for x in support_forces])
         self.displacements = np.array(displacements)
+        
         return self.displacements
+
+    def stress_strain(self):
+        forces_list = []
+        strain = []
+        for truss in self.connectivity:
+            i, j = truss[0], truss[1]
+            u_element = self.displacements[[2*i, 2*i+1, 2*j, 2*j+1]]
+            vector = self.nodes_list[j] - self.nodes_list[i]
+            L = (vector[0]**2 + vector[1]**2)**(0.5)  #length
+            theta = np.arctan2(vector[1],vector[0])
+            
+            # Transformation matrix
+            T = np.array([-np.cos(theta), -np.sin(theta), np.cos(theta), np.sin(theta)])
+            
+            # delta_L is the truss deformation value (Li - L0)
+            delta_L = T @ u_element
+            f_normal = (self.E * self.A / L) * delta_L
+            forces_list.append(round(f_normal, 3))
+            strain.append(delta_L/L)
+            
+        self.strain = strain
+        self.normal = np.array(forces_list)
+        self.stress = self.E*self.strain
+        
+        return self.stress
