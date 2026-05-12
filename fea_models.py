@@ -49,5 +49,5 @@ class truss_2d:
             displacements[reduced_index[i]] = free_displacements[i]
         support_forces = Kg @ displacements  # Calculating the reaction forces considering the displacements in each node
         self.reactions = np.array([round(x,10) for x in support_forces])
-        displacements = np.array(displacements)
-        return [displacements]
+        self.displacements = np.array(displacements)
+        return self.displacements
