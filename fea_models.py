@@ -1,5 +1,5 @@
 import numpy as np
-class truss_2d:
+class Truss2d:
     def __init__(self, E, A, nodes_list, connectivity):
         self.E = E # Young's modulus
         self.A = A # Section area
@@ -83,3 +83,22 @@ class truss_2d:
         self.stress = self.E*self.strain
         
         return self.stress
+
+    def interpolate(self, bar_num, x):
+        truss = self.connectivity[bar_num]
+        i, j = truss[0], truss[1]
+        u_element = self.displacements[[2*i, 2*i+1, 2*j, 2*j+1]]
+        vector = self.nodes_list[j] - self.nodes_list[i]
+        L = (vector[0]**2 + vector[1]**2)**(0.5)  #length
+        theta = np.arctan2(vector[1],vector[0])
+        
+        # shape functions
+        N_1 = (L-x)/L
+        N_2 = x/L
+
+        # interpolated displacement vector
+        u = [0,0]
+        u[0] = np.round(N_1 * u_element[0] + N_2 * u_element[2], 6)
+        u[1] = np.round(N_1 * u_element[1] + N_2 * u_element[3], 6) 
+        
+        return np.array(u)
