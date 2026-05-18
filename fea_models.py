@@ -85,13 +85,14 @@ class Truss2d:
         return self.stress
 
     def interpolate(self, bar_num, x):
+        
         truss = self.connectivity[bar_num]
         i, j = truss[0], truss[1]
         u_element = self.displacements[[2*i, 2*i+1, 2*j, 2*j+1]]
         vector = self.nodes_list[j] - self.nodes_list[i]
         L = (vector[0]**2 + vector[1]**2)**(0.5)  #length
         theta = np.arctan2(vector[1],vector[0])
-        
+        for i in range(len())
         # shape functions
         N_1 = (L-x)/L
         N_2 = x/L
@@ -102,3 +103,41 @@ class Truss2d:
         u[1] = np.round(N_1 * u_element[1] + N_2 * u_element[3], 6) 
         
         return np.array(u)
+
+class Beam2D:
+    def __init__(self, E, A, I, nodes_list, connectivity):
+        self.E = E # Young's modulus
+        self.I = I # Moment of Inercia
+        self.A = A
+        self.nodes_list = nodes_list
+        self.connectivity = connectivity
+        self.dof = 3*len(nodes_list)      # Degrees of freedom (u,v,θ)
+        self.axial = Truss2d(E, A, nodes_list, connectivity)
+        
+    def stiffness_matrix_point_load(self):
+        self.Kg = np.zeros((self.dof, self.dof))  # global stiffness matrix
+        for truss in self.connectivity:
+            i, j = truss[0], truss[1]
+            matrix_index = [3*i+1, 3*i+2, 3*j+1, 3*j+2]
+            axial_index = [3*i, 3*i +1, 3*j, 3*j+1]
+            vector = self.nodes_list[j] - self.nodes_list[i]
+            L = (vector[0]**2 + vector[1]**2)**(0.5)  #length
+            theta = np.arctan2(vector[1],vector[0])
+            
+            # Stiffness matrix for a beam element
+            Kb = (self.E * self.I / L**3)*np.array([ 
+                [12, 6*L, -12, 6*L],
+                [6*L, 4*L**2, -6*L, 2*L**2],
+                [-12, -6*L, 12, -6*L],
+                [6*L, 2*L**2, -6*L, 4*L**2]
+            ])
+            K1D = (self.E*self.A/L)*np.array([ [1, 0, -1, 0],
+            [-1, 0, 1, 0] ])
+            # Stiffness matrix for a 2D truss element
+            for m in range(4):
+                for n in range(4):
+                    self.Kg[matrix_index[m], matrix_index[n]] += Kb[m,n]
+                    self.Kg[axial_index[m], axial_index[n]] += K1D[m,n]
+            
+
+        return self.Kg
