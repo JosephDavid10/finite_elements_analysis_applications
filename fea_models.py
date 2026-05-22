@@ -104,7 +104,7 @@ class Truss2d:
         
         return np.array(u)
 
-class Beam2D:
+class Beam2d:
     def __init__(self, E, A, I, nodes_list, connectivity):
         self.E = E # Young's modulus
         self.I = I # Moment of Inercia
@@ -140,4 +140,61 @@ class Beam2D:
                     self.Kg[axial_index[m], axial_index[n]] += K1D[m,n]
             
 
+        return self.Kg
+
+
+class Frame2d:
+    def __init__(self, E, A, I, nodes_list, connectivity):
+        self.E = E # Young's modulus
+        self.I = I # Moment of Inercia
+        self.A = A
+        self.nodes_list = nodes_list
+        self.connectivity = connectivity
+        self.dof = 3*len(nodes_list)      # Degrees of freedom (u,v,θ)
+        self.axial = Truss2d(E, A, nodes_list, connectivity)
+        
+    def stiffness_matrix_point_load(self):
+        self.Kg = np.zeros((self.dof, self.dof)) # global stiffness matrix
+        frame = self.Kg
+        for truss in self.connectivity:
+            i, j = truss[0], truss[1]
+            matrix_index = [3*i, 3*i+1, 3*i+2, 3*j, 3*j+1, 3*j+2]
+            vector = self.nodes_list[j] - self.nodes_list[i]
+            L = (vector[0]**2 + vector[1]**2)**(0.5)  #length
+            theta = np.arctan2(vector[1],vector[0])
+            
+            # Stiffness matrix for a beam element
+            rig_v = (self.E * self.I / L**3)
+            rig_u = (self.E*self.A/L)
+            frame = np.array([ 
+                [   rig_u,          0,             0,   -1*rig_u,           0,               0],
+                [       0,   12*rig_v,     6*L*rig_v,          0,   -12*rig_v,       6*L*rig_v],
+                [       0,  6*L*rig_v,  4*L**2*rig_v,          0,   -6*L*rig_v,   2*L**2*rig_v],
+                [-1*rig_u,          0,             0,    1*rig_u,            0,              0],
+                [       0,  -12*rig_v,    -6*L*rig_v,          0,     12*rig_v,     -6*L*rig_v],
+                [       0,  6*L*rig_v,  2*L**2*rig_v,          0,   -6*L*rig_v,   4*L**2*rig_v]
+
+            ])
+                    
+            # transformation matrix
+            c = np.cos(theta)
+            s = np.sin(theta)
+
+            T = np.array([
+                [c, s, 0, 0, 0, 0],
+                [-s, c, 0, 0, 0, 0],
+                [0, 0, 1, 0, 0, 0],
+                [0, 0, 0, c, s, 0],
+                [0, 0, 0, -s, c, 0],
+                [0, 0, 0, 0, 0, 1]
+            ])
+
+            # Stiffness matrix for a 2D frame element
+            frame = T.T @ frame @ T
+            
+            for m in range(len(matrix_index)):
+                for n in range(len(matrix_index)):
+                   self.Kg[matrix_index[m], matrix_index[n]] += frame[m,n]
+            
+        
         return self.Kg
