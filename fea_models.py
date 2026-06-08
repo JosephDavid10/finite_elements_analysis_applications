@@ -152,6 +152,35 @@ class Frame2d:
         self.connectivity = connectivity
         self.dof = 3*len(nodes_list)      # Degrees of freedom (u,v,θ)
         self.axial = Truss2d(E, A, nodes_list, connectivity)
+
+    def calculate_load_type(load_type, params, L):
+        local_load = np.zeros(4)
+        if load_type == "point":
+            P = params["P"]
+            a = params["a"]
+            b = L - a
+
+            local_load[0] = (P * b**2 * (3*a + b)) / (L**3)
+            local_load[1] = (P * a * b**2) / (L**2)
+            local_load[2] = (P * a**2 * (3*b + a)) / (L**3)
+            local_load[3] = -(P * a**2 * b) / (L**2)
+        
+        elif load_type == "uniform":
+            q = params["q"]
+            local_load[0] = q * L/2
+            local_load[1] = q * (L**2)/2
+            local_load[2] = q * L/2
+            local_load[3] = - q * (L**2)/2
+        
+        else load_type == "trapezoidal":
+            q1 = params["q1"]
+            q2 = params["q2"]
+            local_load[0] = 7*q1*L/20 + 3*q2*L/20
+            local_load[1] = (q1*L**2)/20 + (q2*L**2)/30
+            local_load[2] = (3*q1*L)/20 + (7*q2*L)/20
+            local_load[3] = -(q1*L**2)/30 - (q2*L**2)/20
+
+        return f_local
         
     def stiffness_matrix_point_load(self):
         self.Kg = np.zeros((self.dof, self.dof)) # global stiffness matrix
