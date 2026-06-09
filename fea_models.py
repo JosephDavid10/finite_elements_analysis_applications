@@ -114,7 +114,7 @@ class Beam2d:
         self.dof = 3*len(nodes_list)      # Degrees of freedom (u,v,θ)
         self.axial = Truss2d(E, A, nodes_list, connectivity)
         
-    def stiffness_matrix_point_load(self):
+    def stiffness_matrix(self):
         self.Kg = np.zeros((self.dof, self.dof))  # global stiffness matrix
         for truss in self.connectivity:
             i, j = truss[0], truss[1]
@@ -144,49 +144,90 @@ class Beam2d:
 
 
 class Frame2d:
-    def __init__(self, E, A, I, nodes_list, connectivity):
+    def __init__(self, nodes_list, connectivity, E = 1.0, A = 1.0, I = 1.0,):
         self.E = E # Young's modulus
         self.I = I # Moment of Inercia
         self.A = A
         self.nodes_list = nodes_list
         self.connectivity = connectivity
         self.dof = 3*len(nodes_list)      # Degrees of freedom (u,v,θ)
-        self.axial = Truss2d(E, A, nodes_list, connectivity)
 
-    def calculate_load_type(load_type, params, L):
-        local_load = np.zeros(4)
+    def calculate_load_type(self, load_type, params, bar):
+        truss = self.connectivity[bar]
+        i, j = truss[0], truss[1]
+        vector = self.nodes_list[j] - self.nodes_list[i]
+        L = (vector[0]**2 + vector[1]**2)**(0.5)  #length
+        theta = np.arctan2(vector[1],vector[0])
+        
+        local_load = np.zeros(6)
+        
         if load_type == "point":
-            P = params["P"]
-            a = params["a"]
-            b = L - a
+            P = params["P"]  # load value
+            a = params["Pa"] # distance from the last node
+            b = L - a        # distance  from the first node
 
-            local_load[0] = (P * b**2 * (3*a + b)) / (L**3)
-            local_load[1] = (P * a * b**2) / (L**2)
-            local_load[2] = (P * a**2 * (3*b + a)) / (L**3)
-            local_load[3] = -(P * a**2 * b) / (L**2)
+            # reactions vector
+            local_load[1] = (P * b**2 * (3*a + b)) / (L**3)
+            local_load[2] = (P * a * b**2) / (L**2)
+            local_load[4] = (P * a**2 * (3*b + a)) / (L**3)
+            local_load[5] = -(P * a**2 * b) / (L**2)
+
+        elif load_type == "moment":
+            M = params["M"]
+            a = params["Ma"]
+            b = L-a
+            
+            # reactions vector
+            local_load[1] += 6*M*a*b/(L**3)
+            local_load[2] += M*b*(2*a-b)/(L**2)
+            local_load[4] += -6*M*a**b/(L**2)
+            local_load[5] += M*a*(2*b-a)/(L**2)
         
         elif load_type == "uniform":
             q = params["q"]
-            local_load[0] = q * L/2
-            local_load[1] = q * (L**2)/2
-            local_load[2] = q * L/2
-            local_load[3] = - q * (L**2)/2
+
+            local_load[1] = q * L/2
+            local_load[2] = q * (L**2)/12
+            local_load[4] = q * L/2
+            local_load[5] = - q * (L**2)/12
         
-        else load_type == "trapezoidal":
+        elif load_type == "trapezoidal":
             q1 = params["q1"]
             q2 = params["q2"]
-            local_load[0] = 7*q1*L/20 + 3*q2*L/20
-            local_load[1] = (q1*L**2)/20 + (q2*L**2)/30
-            local_load[2] = (3*q1*L)/20 + (7*q2*L)/20
-            local_load[3] = -(q1*L**2)/30 - (q2*L**2)/20
+            
+            #reactions vector
+            local_load[1] = 7*q1*L/20 + 3*q2*L/20
+            local_load[2] = (q1*L**2)/20 + (q2*L**2)/30
+            local_load[4] = (3*q1*L)/20 + (7*q2*L)/20
+            local_load[5] = -(q1*L**2)/30 - (q2*L**2)/20
+            
+        else:
+            print('''Please, try again with one of the avaiable load conditions
+                    "point" for concentrated load
+                    "moment" for concentrated moment
+                    "uniform" for uniform distributed load
+                    "trapezoidal" for trapezoidal distributed load''')
 
-        return f_local
+        # transformation matrix
+        c = np.cos(theta)
+        s = np.sin(theta)
+
+        T = np.array([
+                [c, s, 0, 0, 0, 0],
+                [-s, c, 0, 0, 0, 0],
+                [0, 0, 1, 0, 0, 0],
+                [0, 0, 0, c, s, 0],
+                [0, 0, 0, -s, c, 0],
+                [0, 0, 0, 0, 0, 1]
+            ])
+        local_load = T @ local_load
         
-    def stiffness_matrix_point_load(self):
+        return local_load
+        
+    def stiffness_matrix(self):
         self.Kg = np.zeros((self.dof, self.dof)) # global stiffness matrix
-        frame = self.Kg
-        for truss in self.connectivity:
-            i, j = truss[0], truss[1]
+        for frame in self.connectivity:
+            i, j = frame[0], frame[1]
             matrix_index = [3*i, 3*i+1, 3*i+2, 3*j, 3*j+1, 3*j+2]
             vector = self.nodes_list[j] - self.nodes_list[i]
             L = (vector[0]**2 + vector[1]**2)**(0.5)  #length
@@ -195,7 +236,7 @@ class Frame2d:
             # Stiffness matrix for a beam element
             rig_v = (self.E * self.I / L**3)
             rig_u = (self.E*self.A/L)
-            frame = np.array([ 
+            frame_stiff = np.array([ 
                 [   rig_u,          0,             0,   -1*rig_u,           0,               0],
                 [       0,   12*rig_v,     6*L*rig_v,          0,   -12*rig_v,       6*L*rig_v],
                 [       0,  6*L*rig_v,  4*L**2*rig_v,          0,   -6*L*rig_v,   2*L**2*rig_v],
@@ -219,11 +260,30 @@ class Frame2d:
             ])
 
             # Stiffness matrix for a 2D frame element
-            frame = T.T @ frame @ T
+            frame_stiff = T.T @ frame_stiff @ T
             
             for m in range(len(matrix_index)):
                 for n in range(len(matrix_index)):
-                   self.Kg[matrix_index[m], matrix_index[n]] += frame[m,n]
-            
+                   self.Kg[matrix_index[m], matrix_index[n]] += frame_stiff[m,n]
         
         return self.Kg
+        
+    def reactions_solver(self, local_load, displacements): # displacements is a list with ones if there is free displacements in node and 0 if there isn't 
+        reduced_index = []
+        Kg = self.stiffness_matrix()
+        for i in range(len(displacements)):
+            if displacements[i] != 0: 
+                reduced_index += [i]
+            else:
+                continue
+        reduced_Kg = Kg[np.ix_(reduced_index, reduced_index)]
+        reduced_load = local_load[reduced_index]
+        
+        free_displacements = np.linalg.solve(reduced_Kg, reduced_load)
+        for i in range(len(reduced_index)):
+            displacements[reduced_index[i]] = free_displacements[i]
+        support_forces = Kg @ displacements - local_load
+        self.reactions = np.array([round(x,10) for x in support_forces])
+        self.displacements = np.array(displacements)
+    
+        return [self.displacements, self.reactions]
