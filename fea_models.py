@@ -180,7 +180,7 @@ class Frame2d:
             # reactions vector
             local_load[1] += 6*M*a*b/(L**3)
             local_load[2] += M*b*(2*a-b)/(L**2)
-            local_load[4] += -6*M*a**b/(L**2)
+            local_load[4] += -6*M*a*b/(L**3)
             local_load[5] += M*a*(2*b-a)/(L**2)
         
         elif load_type == "uniform":
@@ -220,13 +220,16 @@ class Frame2d:
                 [0, 0, 0, -s, c, 0],
                 [0, 0, 0, 0, 0, 1]
             ])
-        local_load = T @ local_load
+        local_load = T.T @ local_load
         
         return local_load
         
-    def stiffness_matrix(self):
+    def stiffness_matrix(self, hinges = None):
         self.Kg = np.zeros((self.dof, self.dof)) # global stiffness matrix
-        for frame in self.connectivity:
+        if hinges == None:
+            hinges = [0] * len(self.connectivity)
+    
+        for k, frame in enumerate(self.connectivity):
             i, j = frame[0], frame[1]
             matrix_index = [3*i, 3*i+1, 3*i+2, 3*j, 3*j+1, 3*j+2]
             vector = self.nodes_list[j] - self.nodes_list[i]
@@ -236,16 +239,42 @@ class Frame2d:
             # Stiffness matrix for a beam element
             rig_v = (self.E * self.I / L**3)
             rig_u = (self.E*self.A/L)
-            frame_stiff = np.array([ 
-                [   rig_u,          0,             0,   -1*rig_u,           0,               0],
-                [       0,   12*rig_v,     6*L*rig_v,          0,   -12*rig_v,       6*L*rig_v],
-                [       0,  6*L*rig_v,  4*L**2*rig_v,          0,   -6*L*rig_v,   2*L**2*rig_v],
-                [-1*rig_u,          0,             0,    1*rig_u,            0,              0],
-                [       0,  -12*rig_v,    -6*L*rig_v,          0,     12*rig_v,     -6*L*rig_v],
-                [       0,  6*L*rig_v,  2*L**2*rig_v,          0,   -6*L*rig_v,   4*L**2*rig_v]
 
-            ])
-                    
+            hinge_type = hinges[k]
+
+            if hinge_type == 0:
+                frame_stiff = np.array([ 
+                    [   rig_u,          0,             0,   -1*rig_u,           0,               0],
+                    [       0,   12*rig_v,     6*L*rig_v,          0,   -12*rig_v,       6*L*rig_v],
+                    [       0,  6*L*rig_v,  4*L**2*rig_v,          0,   -6*L*rig_v,   2*L**2*rig_v],
+                    [-1*rig_u,          0,             0,    1*rig_u,            0,              0],
+                    [       0,  -12*rig_v,    -6*L*rig_v,          0,     12*rig_v,     -6*L*rig_v],
+                    [       0,  6*L*rig_v,  2*L**2*rig_v,          0,   -6*L*rig_v,   4*L**2*rig_v]
+    
+                ])
+
+            elif hinge_type == 1: 
+                #hinge in the initial node
+                frame_stiff = np.array([
+                    [   rig_u,          0,   0,   -1*rig_u,           0,               0],
+                    [       0,    3*rig_v,   0,          0,    -3*rig_v,       3*L*rig_v],
+                    [       0,          0,   0,          0,           0,               0],
+                    [-1*rig_u,          0,   0,    1*rig_u,            0,              0],
+                    [       0,   -3*rig_v,   0,          0,     3*rig_v,      -3*L*rig_v],
+                    [       0,  3*L*rig_v,   0,          0,  -3*L*rig_v,    3*L**2*rig_v]
+                ])
+
+            elif hinge_type == 2:
+                #hinge in the final node
+                frame_stiff = np.array([
+                    [   rig_u,          0,             0,   -1*rig_u,           0,   0],
+                    [       0,    3*rig_v,     3*L*rig_v,          0,    -3*rig_v,   0],
+                    [       0,  3*L*rig_v,  3*L**2*rig_v,          0,  -3*L*rig_v,   0],
+                    [-1*rig_u,          0,             0,    1*rig_u,            0,   0],
+                    [       0,   -3*rig_v,    -3*L*rig_v,          0,     3*rig_v,   0],
+                    [       0,          0,             0,          0,           0,   0]
+                ])
+                
             # transformation matrix
             c = np.cos(theta)
             s = np.sin(theta)
@@ -268,9 +297,9 @@ class Frame2d:
         
         return self.Kg
         
-    def reactions_solver(self, local_load, displacements): # displacements is a list with ones if there is free displacements in node and 0 if there isn't 
+    def reactions_solver(self, local_load, displacements, hinges=None): # displacements is a list with ones if there are free displacements in node and 0 if there are not 
         reduced_index = []
-        Kg = self.stiffness_matrix()
+        Kg = self.stiffness_matrix(hinges)
         for i in range(len(displacements)):
             if displacements[i] != 0: 
                 reduced_index += [i]
